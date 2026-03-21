@@ -495,6 +495,22 @@ select { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.o
 .pay-type-btn.selected { border-color: var(--accent); background: var(--accent-dim); }
 .pay-type-btn.selected span:last-child { color: var(--accent2); }
 
+.filter-tab {
+  padding: 7px 14px;
+  border-radius: 99px;
+  border: 1px solid var(--border2);
+  background: none;
+  cursor: pointer;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text3);
+  white-space: nowrap;
+  transition: all 0.15s;
+  flex-shrink: 0;
+}
+.filter-tab.active { background: var(--accent-dim); border-color: rgba(124,106,245,0.4); color: var(--accent2); }
+
 /* Calendar */
 .cal-wrap { padding: 0 16px 4px; }
 .cal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
@@ -670,7 +686,17 @@ select { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.o
   </div>
 
   <div class="section">
-    <div class="section-label">Ultimos movimientos</div>
+    <div class="section-label" style="margin-bottom:8px;">Movimientos</div>
+    <div style="display:flex;gap:6px;margin-bottom:10px;overflow-x:auto;padding-bottom:2px;-ms-overflow-style:none;scrollbar-width:none;">
+      <button class="filter-tab active" id="ftab-today" onclick="setFilterTab('today')">Hoy</button>
+      <button class="filter-tab" id="ftab-7days" onclick="setFilterTab('7days')">7 días</button>
+      <button class="filter-tab" id="ftab-custom" onclick="setFilterTab('custom')">Personalizar</button>
+    </div>
+    <div id="custom-date-row" style="display:none;gap:8px;margin-bottom:10px;align-items:center;">
+      <input type="date" id="filter-from" onchange="renderHome()" style="flex:1;background:var(--bg3);border:1px solid var(--border2);border-radius:10px;color:var(--text2);padding:8px 10px;font-size:13px;">
+      <span style="color:var(--text3);font-size:12px;">→</span>
+      <input type="date" id="filter-to" onchange="renderHome()" style="flex:1;background:var(--bg3);border:1px solid var(--border2);border-radius:10px;color:var(--text2);padding:8px 10px;font-size:13px;">
+    </div>
     <div class="card" id="recent-list">
       <div class="txn-item" style="justify-content:center; padding:24px;">
         <span style="color:var(--text3);font-size:14px;">Sin movimientos este mes</span>
@@ -1211,14 +1237,48 @@ function renderHome() {
   pb.className = 'progress-bar' + (pct >= 100 ? ' over' : pct >= 75 ? ' warn' : '');
 
   // Recent list
-  const all = [
+  let all = [
     ...mExps.map(e => ({...e, type:'exp'})),
     ...mInc.map(i => ({...i, type:'inc'}))
-  ].sort((a,b) => b.id - a.id).slice(0, 10);
+  ].sort((a,b) => b.id - a.id);
+
+  // Apply date filter
+  const today = new Date(); today.setHours(0,0,0,0);
+  const tab = typeof activeFilterTab !== 'undefined' ? activeFilterTab : 'today';
+
+  if (tab === 'today') {
+    all = all.filter(item => {
+      const d = parseDMY(String(item.date||''));
+      if (!d) return false;
+      d.setHours(0,0,0,0);
+      return d.getTime() === today.getTime();
+    });
+  } else if (tab === '7days') {
+    const week = new Date(today); week.setDate(week.getDate() - 6);
+    all = all.filter(item => {
+      const d = parseDMY(String(item.date||''));
+      if (!d) return false;
+      d.setHours(0,0,0,0);
+      return d >= week && d <= today;
+    });
+  } else if (tab === 'custom') {
+    const fromVal = document.getElementById('filter-from') ? document.getElementById('filter-from').value : '';
+    const toVal = document.getElementById('filter-to') ? document.getElementById('filter-to').value : '';
+    if (fromVal && toVal) {
+      const fromD = new Date(fromVal); fromD.setHours(0,0,0,0);
+      const toD = new Date(toVal); toD.setHours(23,59,59,999);
+      all = all.filter(item => {
+        const d = parseDMY(String(item.date||''));
+        if (!d) return false;
+        return d >= fromD && d <= toD;
+      });
+    }
+  }
 
   const list = document.getElementById('recent-list');
   if (!all.length) {
-    list.innerHTML = '<div class="txn-item" style="justify-content:center;padding:24px;"><span style="color:var(--text3);font-size:14px;">Sin movimientos este mes</span></div>';
+    const msgs = { today: 'Sin movimientos hoy', '7days': 'Sin movimientos en los últimos 7 días', custom: 'Sin movimientos en ese rango' };
+    list.innerHTML = '<div class="txn-item" style="justify-content:center;padding:24px;"><span style="color:var(--text3);font-size:14px;">' + (msgs[tab]||'Sin movimientos') + '</span></div>';
     return;
   }
   list.innerHTML = all.map(item => {
@@ -1236,6 +1296,31 @@ function renderHome() {
       <div class="txn-amount ${amountCls}">${amountStr}</div>
     </div>`;
   }).join('');
+}
+
+let activeFilterTab = 'today';
+
+function setFilterTab(tab) {
+  activeFilterTab = tab;
+  document.querySelectorAll('.filter-tab').forEach(b => b.classList.remove('active'));
+  document.getElementById('ftab-' + tab).classList.add('active');
+  const customRow = document.getElementById('custom-date-row');
+  if (customRow) customRow.style.display = tab === 'custom' ? 'flex' : 'none';
+  if (tab === 'custom') {
+    const today = new Date().toISOString().split('T')[0];
+    const fromEl = document.getElementById('filter-from');
+    const toEl = document.getElementById('filter-to');
+    if (fromEl && !fromEl.value) fromEl.value = today;
+    if (toEl && !toEl.value) toEl.value = today;
+  }
+  renderHome();
+}
+
+function parseDMY(str) {
+  if (!str) return null;
+  const p = str.split('/');
+  if (p.length === 3) return new Date(p[2], p[1]-1, p[0]);
+  return null;
 }
 
 // ════════ FIJOS ════════
