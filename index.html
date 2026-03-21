@@ -621,15 +621,15 @@ select { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.o
     <div class="stats-row">
       <div class="stat-box">
         <div class="sv sv-green" id="stat-ingresos">$0</div>
-        <div class="sl">Ingresos</div>
+        <div class="sl" id="sl-ingresos">Ingresos</div>
       </div>
       <div class="stat-box">
         <div class="sv sv-red" id="stat-gastos">$0</div>
-        <div class="sl">Gastos</div>
+        <div class="sl" id="sl-gastos">Gastos</div>
       </div>
       <div class="stat-box">
         <div class="sv sv-amber" id="stat-fijos">$0</div>
-        <div class="sl">Fijos</div>
+        <div class="sl">Fijos mes</div>
       </div>
     </div>
 
@@ -1215,20 +1215,58 @@ function renderHome() {
   const totalIngresos = mInc.reduce((s,i) => s + (i.amount||0), 0);
   const balance = totalIngresos - totalGastos - totalFijos;
 
-  document.getElementById('hero-month').textContent = monthStr().toUpperCase();
-  document.getElementById('hero-balance').textContent = Math.abs(Math.round(balance)).toLocaleString('es-AR');
-  const heroEl = document.getElementById('hero-balance').previousElementSibling;
-  if (balance < 0) document.querySelector('.hero-balance').style.color = 'var(--red)';
-  else if (balance === 0) document.querySelector('.hero-balance').style.color = 'var(--text)';
+  // Compute filtered totals based on active tab
+  const todayStr = new Date().toLocaleDateString('es-AR');
+  const tab = typeof activeFilterTab !== 'undefined' ? activeFilterTab : 'today';
+
+  function itemMatchesTab(item) {
+    const d = parseDMY(String(item.date||''));
+    if (!d) return false;
+    d.setHours(0,0,0,0);
+    const now = new Date(); now.setHours(0,0,0,0);
+    if (tab === 'today') return d.getTime() === now.getTime();
+    if (tab === '7days') {
+      const week = new Date(now); week.setDate(week.getDate()-6);
+      return d >= week && d <= now;
+    }
+    if (tab === 'custom') {
+      const fromVal = document.getElementById('filter-from') ? document.getElementById('filter-from').value : '';
+      const toVal = document.getElementById('filter-to') ? document.getElementById('filter-to').value : '';
+      if (!fromVal || !toVal) return true;
+      const fromD = new Date(fromVal); fromD.setHours(0,0,0,0);
+      const toD = new Date(toVal); toD.setHours(23,59,59,999);
+      return d >= fromD && d <= toD;
+    }
+    return true;
+  }
+
+  const filtExps = mExps.filter(itemMatchesTab);
+  const filtInc = mInc.filter(itemMatchesTab);
+  const filtGastos = filtExps.reduce((s,e) => s + (e.amount||0), 0);
+  const filtIngresos = filtInc.reduce((s,i) => s + (i.amount||0), 0);
+  const filtBalance = filtIngresos - filtGastos;
+
+  const tabLabels = { today: 'HOY', '7days': 'ÚLTIMOS 7 DÍAS', custom: 'PERÍODO' };
+  document.getElementById('hero-month').textContent = tabLabels[tab] || monthStr().toUpperCase();
+  document.getElementById('hero-balance').textContent = Math.abs(Math.round(filtBalance)).toLocaleString('es-AR');
+
+  if (filtBalance < 0) document.querySelector('.hero-balance').style.color = 'var(--red)';
+  else if (filtBalance === 0) document.querySelector('.hero-balance').style.color = 'var(--text)';
   else document.querySelector('.hero-balance').style.color = 'var(--green)';
 
-  document.getElementById('hero-status').textContent = balance >= 0
-    ? `Saldo positivo este mes 🎉`
-    : `Gastos superan ingresos por ${fmt(Math.abs(balance))}`;
+  document.getElementById('hero-status').textContent = filtBalance >= 0
+    ? `Saldo positivo ${tab === 'today' ? 'hoy' : tab === '7days' ? 'esta semana' : 'en el período'} 🎉`
+    : `Gastos superan ingresos por ${fmt(Math.abs(filtBalance))}`;
 
-  document.getElementById('stat-ingresos').textContent = fmt(totalIngresos);
-  document.getElementById('stat-gastos').textContent = fmt(totalGastos);
+  document.getElementById('stat-ingresos').textContent = fmt(filtIngresos);
+  document.getElementById('stat-gastos').textContent = fmt(filtGastos);
   document.getElementById('stat-fijos').textContent = fmt(totalFijos);
+
+  const slI = document.getElementById('sl-ingresos');
+  const slG = document.getElementById('sl-gastos');
+  const shortLabel = { today: 'hoy', '7days': '7 días', custom: 'período' };
+  if (slI) slI.textContent = 'Ingr. ' + (shortLabel[tab]||'');
+  if (slG) slG.textContent = 'Gast. ' + (shortLabel[tab]||'');
 
   const pct = totalIngresos > 0 ? Math.min(Math.round((totalGastos + totalFijos) / totalIngresos * 100), 100) : 0;
   document.getElementById('progress-vals').textContent = pct + '%';
@@ -1243,8 +1281,7 @@ function renderHome() {
   ].sort((a,b) => b.id - a.id);
 
   // Apply date filter
-  const today = new Date(); today.setHours(0,0,0,0);
-  const tab = typeof activeFilterTab !== 'undefined' ? activeFilterTab : 'today';
+  const todayD = new Date(); todayD.setHours(0,0,0,0);
 
   if (tab === 'today') {
     all = all.filter(item => {
