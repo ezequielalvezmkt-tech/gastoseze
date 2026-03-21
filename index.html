@@ -1112,31 +1112,7 @@ function showLoadingBanner(show) {
   if (!show) setTimeout(() => el.remove(), 400);
 }
 
-async function loadFromSheet() {
-  if (!DB.sheetUrl) return;
-  isSyncing = true;
-  showLoadingOverlay('Cargando datos...');
-  try {
-    const url = DB.sheetUrl + '?action=get_all&t=' + Date.now();
-    const res = await fetch(url, { method: 'GET', mode: 'cors' });
-    const json = await res.json();
-    if (json && json.status === 'ok') {
-      const sheetUrl = DB.sheetUrl;
-      const calEvents = DB.calEvents || [];
-      DB = json.data;
-      DB.sheetUrl = sheetUrl;
-      DB.calEvents = calEvents;
-      save();
-      renderPage(currentPage);
-      toast('✓ Datos actualizados desde Sheets');
-    }
-  } catch(e) {
-    console.warn('No se pudo cargar desde Sheets:', e);
-  } finally {
-    isSyncing = false;
-    hideLoadingOverlay();
-  }
-}
+
 
 function showLoadingOverlay(msg) {
   let el = document.getElementById('loading-overlay');
