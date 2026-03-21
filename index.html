@@ -911,8 +911,36 @@ select { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.o
         <input type="text" id="fijo-name" placeholder="ej: Alquiler, Netflix, Gym...">
       </div>
       <div class="form-field">
-        <label class="form-label">Monto mensual</label>
+        <label class="form-label">Frecuencia</label>
+        <div class="pay-type-group" style="grid-template-columns:1fr 1fr;">
+          <button class="pay-type-btn selected" onclick="selectFreq(this,'monthly')" id="freq-monthly">
+            <span>📅</span><span>Mensual</span>
+          </button>
+          <button class="pay-type-btn" onclick="selectFreq(this,'weekly')" id="freq-weekly">
+            <span>🔁</span><span>Semanal</span>
+          </button>
+        </div>
+      </div>
+      <div class="form-field" id="fijo-amount-field">
+        <label class="form-label" id="fijo-amount-label">Monto mensual</label>
         <input type="number" id="fijo-amount" placeholder="0.00" inputmode="decimal">
+      </div>
+      <div class="form-field" id="fijo-weekly-field" style="display:none;">
+        <label class="form-label">Monto por pago (por empleado o total)</label>
+        <input type="number" id="fijo-weekly-amount" placeholder="0.00" inputmode="decimal">
+        <div style="margin-top:8px;">
+          <label class="form-label">Día de la semana</label>
+          <select id="fijo-weekly-day">
+            <option value="1">Lunes</option>
+            <option value="2">Martes</option>
+            <option value="3">Miércoles</option>
+            <option value="4">Jueves</option>
+            <option value="5" selected>Viernes</option>
+            <option value="6">Sábado</option>
+            <option value="0">Domingo</option>
+          </select>
+        </div>
+        <div id="weekly-preview" style="margin-top:10px;background:var(--bg4);border-radius:10px;padding:10px 12px;font-size:13px;color:var(--text2);"></div>
       </div>
       <div class="form-field">
         <label class="form-label">Tipo de pago</label>
@@ -1211,7 +1239,7 @@ function renderHome() {
   const mExps = DB.expenses.filter(e => e.month === mk);
   const mInc = DB.incomes.filter(i => i.month === mk);
   const totalGastos = mExps.reduce((s,e) => s + (e.amount||0), 0);
-  const totalFijos = DB.fijos.reduce((s,f) => s + (f.amount||0), 0);
+  const totalFijos = DB.fijos.reduce((s,f) => s + getFijoMonthlyAmount(f), 0);
   const totalIngresos = mInc.reduce((s,i) => s + (i.amount||0), 0);
   const balance = totalIngresos - totalGastos - totalFijos;
 
@@ -1578,9 +1606,17 @@ function deleteCalEvent(id) {
   save(); renderCalendar(); toast('Eliminado');
 }
 
+function getFijoMonthlyAmount(f) {
+  if (f.freq === 'weekly' && f.weeklyAmount && f.weeklyDay != null) {
+    const now = new Date();
+    return f.weeklyAmount * countDayInMonth(f.weeklyDay, now.getFullYear(), now.getMonth());
+  }
+  return f.amount || 0;
+}
+
 function renderFijos() {
   renderCalendar();
-  const total = DB.fijos.reduce((s,f) => s + (f.amount||0), 0);
+  const total = DB.fijos.reduce((s,f) => s + getFijoMonthlyAmount(f), 0);
   document.getElementById('fijos-total').textContent = fmt(total);
 
   const pending = DB.fijos.filter(f => f.payType === 'pending');
@@ -1606,13 +1642,16 @@ function fijoItemHTML(f, mini) {
     pending: ['bs-pending', '⏳ Pendiente']
   };
   const [cls, label] = typeMap[f.payType] || typeMap.manual;
+  const monthlyAmt = getFijoMonthlyAmount(f);
+  const weeklyInfo = f.freq === 'weekly' ? `<span style="font-size:11px;color:var(--text3);">${fmt(f.weeklyAmount)} × ${f.weeklyDayName}s</span>` : '';
   return `<div class="fixed-item">
     <div class="fixed-left">
       <div class="fixed-name">${f.name}</div>
-      <div class="fixed-amount">${fmt(f.amount)}<span style="color:var(--text3);font-size:11px;"> /mes</span></div>
+      <div class="fixed-amount">${fmt(monthlyAmt)}<span style="color:var(--text3);font-size:11px;"> /mes</span> ${weeklyInfo}</div>
       <div class="fixed-badge-row">
         <span class="badge-status ${cls}">${label}</span>
         <span class="badge-status" style="background:var(--bg4);color:var(--text3);">${f.cat || 'Otro'}</span>
+        ${f.freq === 'weekly' ? '<span class="badge-status" style="background:var(--accent-dim);color:var(--accent2);">🔁 Semanal</span>' : ''}
       </div>
     </div>
     <div class="fixed-actions">
@@ -1900,25 +1939,104 @@ function addExpense() {
   document.getElementById('exp-desc').value = '';
 }
 
+let selectedFreq = 'monthly';
+
+function selectFreq(btn, freq) {
+  selectedFreq = freq;
+  document.querySelectorAll('#freq-monthly, #freq-weekly').forEach(b => b.classList.remove('selected'));
+  btn.classList.add('selected');
+  const isWeekly = freq === 'weekly';
+  document.getElementById('fijo-amount-field').style.display = isWeekly ? 'none' : 'block';
+  document.getElementById('fijo-weekly-field').style.display = isWeekly ? 'block' : 'none';
+  if (isWeekly) updateWeeklyPreview();
+}
+
+function countDayInMonth(dow, year, month) {
+  let count = 0;
+  const days = new Date(year, month + 1, 0).getDate();
+  for (let d = 1; d <= days; d++) {
+    if (new Date(year, month, d).getDay() === dow) count++;
+  }
+  return count;
+}
+
+function updateWeeklyPreview() {
+  const perPago = parseFloat(document.getElementById('fijo-weekly-amount').value) || 0;
+  const dow = parseInt(document.getElementById('fijo-weekly-day').value);
+  const DAY_NAMES = ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
+  const now = new Date();
+  const thisMonth = countDayInMonth(dow, now.getFullYear(), now.getMonth());
+  const nextMonth = countDayInMonth(dow, now.getFullYear(), now.getMonth() + 1);
+  const totalThis = perPago * thisMonth;
+  const totalNext = perPago * nextMonth;
+  const preview = document.getElementById('weekly-preview');
+  if (preview && perPago > 0) {
+    preview.innerHTML = `
+      <div style="margin-bottom:4px;"><b>${DAY_NAMES[dow]}s este mes:</b> ${thisMonth} pagos · <span style="color:var(--red);">${fmt(totalThis)}</span></div>
+      <div><b>${DAY_NAMES[dow]}s mes siguiente:</b> ${nextMonth} pagos · <span style="color:var(--red);">${fmt(totalNext)}</span></div>
+    `;
+  }
+}
+
+// Update preview on input change
+document.addEventListener('input', e => {
+  if (e.target.id === 'fijo-weekly-amount' || e.target.id === 'fijo-weekly-day') {
+    updateWeeklyPreview();
+  }
+});
+
 function addFijo() {
   const name = document.getElementById('fijo-name').value.trim();
-  const amount = parseFloat(document.getElementById('fijo-amount').value);
   const cat = document.getElementById('fijo-cat').value;
   if (!name) { toast('Ingresá un nombre'); return; }
-  if (!amount || amount <= 0) { toast('Ingresá un monto'); return; }
 
-  const fijo = { id: Date.now(), name, amount, cat, payType: selectedPayType };
+  let amount, weeklyAmount, weeklyDay;
+
+  if (selectedFreq === 'weekly') {
+    weeklyAmount = parseFloat(document.getElementById('fijo-weekly-amount').value);
+    weeklyDay = parseInt(document.getElementById('fijo-weekly-day').value);
+    if (!weeklyAmount || weeklyAmount <= 0) { toast('Ingresá el monto por pago'); return; }
+    // Calculate monthly equivalent based on current month
+    const now = new Date();
+    const occurrences = countDayInMonth(weeklyDay, now.getFullYear(), now.getMonth());
+    amount = weeklyAmount * occurrences;
+  } else {
+    amount = parseFloat(document.getElementById('fijo-amount').value);
+    if (!amount || amount <= 0) { toast('Ingresá un monto'); return; }
+  }
+
+  const DAY_NAMES = ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
+  const fijo = {
+    id: Date.now(),
+    name,
+    amount,
+    cat,
+    payType: selectedPayType,
+    freq: selectedFreq,
+    weeklyAmount: selectedFreq === 'weekly' ? weeklyAmount : null,
+    weeklyDay: selectedFreq === 'weekly' ? weeklyDay : null,
+    weeklyDayName: selectedFreq === 'weekly' ? DAY_NAMES[weeklyDay] : null
+  };
   DB.fijos.push(fijo);
   save();
   syncToSheet('fijo', fijo);
   closeModal('modal-add-fijo');
   renderFijos();
-  toast('✓ Gasto fijo guardado');
+  const msg = selectedFreq === 'weekly'
+    ? `✓ Guardado — ${fmt(amount)} este mes (${countDayInMonth(weeklyDay, new Date().getFullYear(), new Date().getMonth())} ${DAY_NAMES[weeklyDay]}s)`
+    : '✓ Gasto fijo guardado';
+  toast(msg);
   document.getElementById('fijo-name').value = '';
   document.getElementById('fijo-amount').value = '';
+  document.getElementById('fijo-weekly-amount').value = '';
   selectedPayType = 'auto';
+  selectedFreq = 'monthly';
   document.querySelectorAll('.pay-type-btn').forEach(b => b.classList.remove('selected'));
   document.getElementById('pt-auto').classList.add('selected');
+  document.querySelectorAll('#freq-monthly,#freq-weekly').forEach(b => b.classList.remove('selected'));
+  document.getElementById('freq-monthly').classList.add('selected');
+  document.getElementById('fijo-amount-field').style.display = 'block';
+  document.getElementById('fijo-weekly-field').style.display = 'none';
 }
 
 function addIncome() {
