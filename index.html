@@ -1489,15 +1489,16 @@ function renderIngresos() {
         <div class="ii-cat">${typeLabel[i.type] || i.type} · ${i.date}</div>
       </div>
       <div class="ii-amount">${fmt(i.amount)}</div>
-      <button class="ii-del" onclick="deleteIncome(${i.id})">
+      <button class="ii-del" onclick="deleteIncome('${i.id}')">
         <svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
       </button>
     </div>`).join('');
 }
 
 function deleteIncome(id) {
-  DB.incomes = DB.incomes.filter(i => i.id !== id);
-  save(); renderIngresos(); renderHome();
+  if (!confirm('¿Eliminar este ingreso?')) return;
+  DB.incomes = DB.incomes.filter(i => String(i.id) !== String(id));
+  save(); renderIngresos(); renderHome(); toast('Ingreso eliminado');
 }
 
 // ════════ AJUSTES ════════
