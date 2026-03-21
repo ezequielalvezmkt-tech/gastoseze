@@ -1616,10 +1616,10 @@ function fijoItemHTML(f, mini) {
       </div>
     </div>
     <div class="fixed-actions">
-      ${f.payType === 'pending' ? `<button class="icon-btn" onclick="markPaid(${f.id})" title="Marcar pagado" style="border-color:var(--green);color:var(--green)">
+      ${f.payType === 'pending' ? `<button class="icon-btn" onclick="markPaid('${f.id}')" title="Marcar pagado" style="border-color:var(--green);color:var(--green)">
         <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
       </button>` : ''}
-      <button class="icon-btn" onclick="deleteFijo(${f.id})">
+      <button class="icon-btn" onclick="deleteFijo('${f.id}')">
         <svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
       </button>
     </div>
@@ -1627,13 +1627,13 @@ function fijoItemHTML(f, mini) {
 }
 
 function markPaid(id) {
-  const f = DB.fijos.find(x => x.id === id);
+  const f = DB.fijos.find(x => String(x.id) === String(id));
   if (f) { f.payType = 'auto'; save(); renderFijos(); toast('✓ Marcado como pagado'); }
 }
 
 function deleteFijo(id) {
   if (!confirm('¿Eliminar este gasto fijo?')) return;
-  DB.fijos = DB.fijos.filter(f => f.id !== id);
+  DB.fijos = DB.fijos.filter(f => String(f.id) !== String(id));
   save(); renderFijos(); toast('Eliminado');
 }
 
