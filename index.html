@@ -1275,6 +1275,7 @@ function renderHome() {
   pb.className = 'progress-bar' + (pct >= 100 ? ' over' : pct >= 75 ? ' warn' : '');
 
   // Recent list
+  // Build full list sorted by id (newest first)
   let all = [
     ...mExps.map(e => ({...e, type:'exp'})),
     ...mInc.map(i => ({...i, type:'inc'}))
@@ -1288,15 +1289,22 @@ function renderHome() {
       const d = parseDMY(String(item.date||''));
       if (!d) return false;
       d.setHours(0,0,0,0);
-      return d.getTime() === today.getTime();
+      return d.getTime() === todayD.getTime();
     });
   } else if (tab === '7days') {
-    const week = new Date(today); week.setDate(week.getDate() - 6);
+    const week = new Date(todayD); week.setDate(week.getDate() - 6);
     all = all.filter(item => {
       const d = parseDMY(String(item.date||''));
       if (!d) return false;
       d.setHours(0,0,0,0);
-      return d >= week && d <= today;
+      return d >= week && d <= todayD;
+    });
+    // Sort 7 days: group by date descending, within each date by id descending
+    all.sort((a,b) => {
+      const da = parseDMY(String(a.date||'')); const db = parseDMY(String(b.date||''));
+      if (!da || !db) return 0;
+      if (db.getTime() !== da.getTime()) return db - da;
+      return b.id - a.id;
     });
   } else if (tab === 'custom') {
     const fromVal = document.getElementById('filter-from') ? document.getElementById('filter-from').value : '';
@@ -1309,6 +1317,12 @@ function renderHome() {
         if (!d) return false;
         return d >= fromD && d <= toD;
       });
+      all.sort((a,b) => {
+        const da = parseDMY(String(a.date||'')); const db = parseDMY(String(b.date||''));
+        if (!da || !db) return 0;
+        if (db.getTime() !== da.getTime()) return db - da;
+        return b.id - a.id;
+      });
     }
   }
 
@@ -1318,21 +1332,56 @@ function renderHome() {
     list.innerHTML = '<div class="txn-item" style="justify-content:center;padding:24px;"><span style="color:var(--text3);font-size:14px;">' + (msgs[tab]||'Sin movimientos') + '</span></div>';
     return;
   }
-  list.innerHTML = all.map(item => {
-    const icon = item.type === 'inc' ? '💰' : (CAT_ICONS[item.cat] || '📦');
-    const iconBg = item.type === 'inc' ? 'var(--green-dim)' : 'var(--bg4)';
-    const amountStr = (item.type === 'inc' ? '+' : '-') + fmt(item.amount);
-    const amountCls = item.type === 'inc' ? 'pos' : 'neg';
-    const date = item.date || '';
-    return `<div class="txn-item">
-      <div class="txn-icon" style="background:${iconBg}">${icon}</div>
-      <div class="txn-info">
-        <div class="txn-desc">${item.desc || item.cat || 'Sin descripción'}</div>
-        <div class="txn-meta">${item.cat || (item.type === 'inc' ? 'Ingreso' : 'Gasto')} · ${date}</div>
-      </div>
-      <div class="txn-amount ${amountCls}">${amountStr}</div>
-    </div>`;
-  }).join('');
+
+  // Group by date for 7days and custom tabs
+  if (tab === '7days' || tab === 'custom') {
+    const groups = {};
+    all.forEach(item => {
+      const d = String(item.date||'Sin fecha');
+      if (!groups[d]) groups[d] = [];
+      groups[d].push(item);
+    });
+    const dates = Object.keys(groups).sort((a,b) => {
+      const da = parseDMY(a); const db = parseDMY(b);
+      if (!da || !db) return 0;
+      return db - da;
+    });
+    list.innerHTML = dates.map(dateStr => {
+      const items = groups[dateStr];
+      const dayTotal = items.reduce((s,i) => i.type==='exp' ? s-(i.amount||0) : s+(i.amount||0), 0);
+      const header = `<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 16px 4px;"><span style="font-size:11px;font-weight:600;color:var(--text3);letter-spacing:0.06em;">${dateStr}</span><span style="font-size:12px;font-family:'DM Mono',monospace;color:${dayTotal>=0?'var(--green)':'var(--red)'};">${dayTotal>=0?'+':''}${fmt(dayTotal)}</span></div>`;
+      const rows = items.map(item => {
+        const icon = item.type === 'inc' ? '💰' : (CAT_ICONS[item.cat] || '📦');
+        const iconBg = item.type === 'inc' ? 'var(--green-dim)' : 'var(--bg4)';
+        const amountStr = (item.type === 'inc' ? '+' : '-') + fmt(item.amount);
+        const amountCls = item.type === 'inc' ? 'pos' : 'neg';
+        return `<div class="txn-item">
+          <div class="txn-icon" style="background:${iconBg}">${icon}</div>
+          <div class="txn-info">
+            <div class="txn-desc">${item.desc || item.cat || 'Sin descripción'}</div>
+            <div class="txn-meta">${item.cat || (item.type === 'inc' ? 'Ingreso' : 'Gasto')}</div>
+          </div>
+          <div class="txn-amount ${amountCls}">${amountStr}</div>
+        </div>`;
+      }).join('');
+      return header + rows;
+    }).join('<div style="height:1px;background:var(--border);margin:0 16px;"></div>');
+  } else {
+    list.innerHTML = all.map(item => {
+      const icon = item.type === 'inc' ? '💰' : (CAT_ICONS[item.cat] || '📦');
+      const iconBg = item.type === 'inc' ? 'var(--green-dim)' : 'var(--bg4)';
+      const amountStr = (item.type === 'inc' ? '+' : '-') + fmt(item.amount);
+      const amountCls = item.type === 'inc' ? 'pos' : 'neg';
+      return `<div class="txn-item">
+        <div class="txn-icon" style="background:${iconBg}">${icon}</div>
+        <div class="txn-info">
+          <div class="txn-desc">${item.desc || item.cat || 'Sin descripción'}</div>
+          <div class="txn-meta">${item.cat || (item.type === 'inc' ? 'Ingreso' : 'Gasto')} · ${item.date||''}</div>
+        </div>
+        <div class="txn-amount ${amountCls}">${amountStr}</div>
+      </div>`;
+    }).join('');
+  }
 }
 
 let activeFilterTab = 'today';
