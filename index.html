@@ -1048,29 +1048,45 @@ function loadFromSheet() {
     if (msg) toast(msg);
   }
 
+  function normalizeMonth(val) {
+    if (!val) return mk;
+    const s = String(val).trim();
+    // Already in YYYY-MM format
+    if (/^\d{4}-\d{2}/.test(s)) return s.substring(0, 7);
+    // DD/MM/YYYY format
+    const m = s.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+    if (m) return m[3] + '-' + m[2].padStart(2, '0');
+    return mk;
+  }
+
   function applyRemote(remote) {
     if (remote.error) throw new Error(remote.error);
     if (remote.expenses && remote.expenses.length > 0) {
-      const other = DB.expenses.filter(e => e.month !== mk);
-      DB.expenses = [...other, ...remote.expenses.map(r => ({
+      const remoteExps = remote.expenses.map(r => ({
         id: String(r.id||Date.now()),
         amount: Number(r.monto||r.amount)||0,
         desc: String(r.descripcion||r.desc||''),
         cat: String(r.categoria||r.cat||'Diario'),
         date: String(r.fecha||r.date||''),
-        month: String(r.mes||r.month||mk)
-      }))];
+        month: normalizeMonth(r.mes||r.month)
+      }));
+      // Merge: keep other months from local, replace current month with remote
+      const remoteMonths = [...new Set(remoteExps.map(e => e.month))];
+      const other = DB.expenses.filter(e => !remoteMonths.includes(e.month));
+      DB.expenses = [...other, ...remoteExps];
     }
     if (remote.incomes && remote.incomes.length > 0) {
-      const other = DB.incomes.filter(i => i.month !== mk);
-      DB.incomes = [...other, ...remote.incomes.map(r => ({
+      const remoteIncs = remote.incomes.map(r => ({
         id: String(r.id||Date.now()),
         amount: Number(r.monto||r.amount)||0,
         desc: String(r.descripcion||r.desc||''),
         type: String(r.tipo||r.type||'mayorista'),
         date: String(r.fecha||r.date||''),
-        month: String(r.mes||r.month||mk)
-      }))];
+        month: normalizeMonth(r.mes||r.month)
+      }));
+      const remoteMonths = [...new Set(remoteIncs.map(i => i.month))];
+      const other = DB.incomes.filter(i => !remoteMonths.includes(i.month));
+      DB.incomes = [...other, ...remoteIncs];
     }
     if (remote.fijos && remote.fijos.length > 0) {
       DB.fijos = remote.fijos.map(r => ({
