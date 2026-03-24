@@ -1156,13 +1156,28 @@ function loadFromSheet() {
       DB.incomes = [...other, ...remoteIncs];
     }
     if (remote.fijos && remote.fijos.length > 0) {
-      DB.fijos = remote.fijos.map(r => ({
-        id: String(r.id||Date.now()),
-        name: String(r.nombre||r.name||''),
-        amount: Number(r.monto||r.amount)||0,
-        cat: String(r.categoria||r.cat||'Otro'),
-        payType: String(r.tipo_de_pago||r.payType||'manual')
-      }));
+      DB.fijos = remote.fijos.map(r => {
+        const freq = String(r.frecuencia||r.freq||'monthly');
+        const weeklyAmount = Number(r.monto_semanal||r.weeklyAmount)||0;
+        const weeklyDay = r.dia_semana!==''&&r.dia_semana!=null ? Number(r.dia_semana) : (r.weeklyDay!=null ? Number(r.weeklyDay) : null);
+        const weeklyDayName = String(r.dia_nombre||r.weeklyDayName||'');
+        // Recalculate monthly amount for weekly fijos
+        const now = new Date();
+        const amount = freq === 'weekly' && weeklyAmount && weeklyDay != null
+          ? weeklyAmount * countDayInMonth(weeklyDay, now.getFullYear(), now.getMonth())
+          : Number(r.monto||r.amount)||0;
+        return {
+          id: String(r.id||Date.now()),
+          name: String(r.nombre||r.name||''),
+          amount,
+          cat: String(r.categoria||r.cat||'Otro'),
+          payType: String(r.tipo_de_pago||r.payType||'manual'),
+          freq,
+          weeklyAmount: weeklyAmount||null,
+          weeklyDay: weeklyDay,
+          weeklyDayName
+        };
+      });
     }
     save();
     renderPage(currentPage);
