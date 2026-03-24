@@ -619,15 +619,15 @@ select { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.o
       <div class="hero-status" id="hero-status">Calculando...</div>
     </div>
     <div class="stats-row">
-      <div class="stat-box">
+      <div class="stat-box" onclick="openStatPanel('ingresos')" style="cursor:pointer;">
         <div class="sv sv-green" id="stat-ingresos">$0</div>
         <div class="sl" id="sl-ingresos">Ingresos</div>
       </div>
-      <div class="stat-box">
+      <div class="stat-box" onclick="openStatPanel('gastos')" style="cursor:pointer;">
         <div class="sv sv-red" id="stat-gastos">$0</div>
         <div class="sl" id="sl-gastos">Gastos</div>
       </div>
-      <div class="stat-box">
+      <div class="stat-box" onclick="openStatPanel('fijos')" style="cursor:pointer;">
         <div class="sv sv-amber" id="stat-fijos">$0</div>
         <div class="sl">Fijos mes</div>
       </div>
@@ -1065,6 +1065,19 @@ select { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.o
   </div>
 </div>
 
+<!-- ████ STAT PANEL ████ -->
+<div class="modal-overlay" id="modal-stat-panel">
+  <div class="modal" style="max-height:85vh;">
+    <div class="modal-handle"></div>
+    <div class="modal-header">
+      <div class="modal-title" id="stat-panel-title">Detalle</div>
+      <button class="modal-close" onclick="closeModal('modal-stat-panel')">×</button>
+    </div>
+    <div class="modal-body" id="stat-panel-body" style="padding-bottom:8px;">
+    </div>
+  </div>
+</div>
+
 <!-- TOAST -->
 <div class="toast" id="toast"></div>
 
@@ -1234,6 +1247,195 @@ const CAT_ICONS = {
 const CAT_COLORS = ['#7c6af5','#34d399','#f87171','#fbbf24','#60a5fa','#f472b6','#a78bfa','#34d399','#fb923c','#38bdf8'];
 
 // ════════ HOME ════════
+// ── helpers for stat panels ──
+let panelFilterFrom = '';
+let panelFilterTo = '';
+let panelType = '';
+
+function filterItemsByPanelDates(items) {
+  if (!panelFilterFrom && !panelFilterTo) return items;
+  const fromD = panelFilterFrom ? new Date(panelFilterFrom) : null;
+  const toD = panelFilterTo ? new Date(panelFilterTo) : null;
+  if (fromD) fromD.setHours(0,0,0,0);
+  if (toD) toD.setHours(23,59,59,999);
+  return items.filter(item => {
+    const d = parseDMY(String(item.date||''));
+    if (!d) return false;
+    if (fromD && d < fromD) return false;
+    if (toD && d > toD) return false;
+    return true;
+  });
+}
+
+function renderStatPanelFilter() {
+  return `<div style="display:flex;gap:8px;margin-bottom:14px;align-items:center;">
+    <input type="date" id="panel-from" value="${panelFilterFrom}" onchange="panelFilterFrom=this.value;refreshStatPanel()" style="flex:1;background:var(--bg4);border:1px solid var(--border2);border-radius:10px;color:var(--text2);padding:7px 10px;font-size:12px;">
+    <span style="color:var(--text3);font-size:12px;">→</span>
+    <input type="date" id="panel-to" value="${panelFilterTo}" onchange="panelFilterTo=this.value;refreshStatPanel()" style="flex:1;background:var(--bg4);border:1px solid var(--border2);border-radius:10px;color:var(--text2);padding:7px 10px;font-size:12px;">
+    ${panelFilterFrom||panelFilterTo ? `<button onclick="panelFilterFrom='';panelFilterTo='';refreshStatPanel()" style="background:none;border:1px solid var(--border2);border-radius:8px;padding:6px 10px;font-size:12px;color:var(--text3);cursor:pointer;white-space:nowrap;">✕ Limpiar</button>` : ''}
+  </div>`;
+}
+
+function refreshStatPanel() { openStatPanel(panelType); }
+
+function countRemainingDays(dow) {
+  // Count occurrences of day-of-week from tomorrow to end of month
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = now.getMonth();
+  const lastDay = new Date(year, month+1, 0).getDate();
+  let count = 0;
+  for (let d = now.getDate()+1; d <= lastDay; d++) {
+    if (new Date(year, month, d).getDay() === dow) count++;
+  }
+  return count;
+}
+
+function countPassedDays(dow) {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = now.getMonth();
+  let count = 0;
+  for (let d = 1; d <= now.getDate(); d++) {
+    if (new Date(year, month, d).getDay() === dow) count++;
+  }
+  return count;
+}
+
+function openStatPanel(type) {
+  panelType = type;
+  const mk = getMonthKey();
+  const mExps = DB.expenses.filter(e => e.month === mk);
+  const mInc = DB.incomes.filter(i => i.month === mk);
+  const body = document.getElementById('stat-panel-body');
+  const title = document.getElementById('stat-panel-title');
+  const DAY_NAMES_FULL = ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
+
+  if (type === 'ingresos') {
+    const filtered = filterItemsByPanelDates(mInc).sort((a,b) => b.id - a.id);
+    const total = filtered.reduce((s,i) => s+(i.amount||0), 0);
+    title.textContent = 'Ingresos';
+    const typeLabel = { mayorista:'🏭 Mayorista', minorista:'🛒 Minorista', extra:'⭐ Extra', otro:'📋 Otro' };
+    body.innerHTML = renderStatPanelFilter() + `
+      <div style="background:var(--green-dim);border-radius:12px;padding:14px 16px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;">
+        <span style="font-size:13px;color:var(--green);">Total</span>
+        <span style="font-size:22px;font-weight:600;font-family:'DM Mono',monospace;color:var(--green);">${fmt(total)}</span>
+      </div>
+      ${filtered.length ? filtered.map(i => `
+        <div class="txn-item">
+          <div class="txn-icon" style="background:var(--green-dim);">💰</div>
+          <div class="txn-info">
+            <div class="txn-desc">${i.desc||'Sin descripción'}</div>
+            <div class="txn-meta">${typeLabel[i.type]||i.type} · ${i.date||''}</div>
+          </div>
+          <div class="txn-amount pos">+${fmt(i.amount)}</div>
+        </div>`).join('') : '<div style="text-align:center;padding:20px;color:var(--text3);font-size:14px;">Sin ingresos en este período</div>'}
+    `;
+
+  } else if (type === 'gastos') {
+    const filtered = filterItemsByPanelDates(mExps).sort((a,b) => b.id - a.id);
+    const total = filtered.reduce((s,e) => s+(e.amount||0), 0);
+    title.textContent = 'Gastos';
+    const byCat = {};
+    filtered.forEach(e => { byCat[e.cat] = (byCat[e.cat]||0) + (e.amount||0); });
+    const catRows = Object.entries(byCat).sort((a,b) => b[1]-a[1]).map(([cat,amt]) => {
+      const pct = total ? Math.round(amt/total*100) : 0;
+      return `<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:0.5px solid var(--border);">
+        <span style="font-size:16px;">${CAT_ICONS[cat]||'📦'}</span>
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:13px;font-weight:500;">${cat}</div>
+          <div style="height:4px;background:var(--bg4);border-radius:99px;margin-top:4px;overflow:hidden;"><div style="height:100%;width:${pct}%;background:var(--red);border-radius:99px;"></div></div>
+        </div>
+        <div style="text-align:right;flex-shrink:0;">
+          <div style="font-size:13px;font-weight:600;font-family:'DM Mono',monospace;color:var(--red);">${fmt(amt)}</div>
+          <div style="font-size:11px;color:var(--text3);">${pct}%</div>
+        </div>
+      </div>`;
+    }).join('');
+    body.innerHTML = renderStatPanelFilter() + `
+      <div style="background:var(--red-dim);border-radius:12px;padding:14px 16px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;">
+        <span style="font-size:13px;color:var(--red);">Total</span>
+        <span style="font-size:22px;font-weight:600;font-family:'DM Mono',monospace;color:var(--red);">${fmt(total)}</span>
+      </div>
+      ${catRows ? `<div style="margin-bottom:12px;">${catRows}</div>` : ''}
+      ${filtered.length ? filtered.map(e => `
+        <div class="txn-item">
+          <div class="txn-icon" style="background:var(--bg4);">${CAT_ICONS[e.cat]||'📦'}</div>
+          <div class="txn-info">
+            <div class="txn-desc">${e.desc||e.cat||'Sin descripción'}</div>
+            <div class="txn-meta">${e.cat||'Gasto'} · ${e.date||''}</div>
+          </div>
+          <div class="txn-amount neg">-${fmt(e.amount)}</div>
+        </div>`).join('') : '<div style="text-align:center;padding:20px;color:var(--text3);font-size:14px;">Sin gastos en este período</div>'}
+    `;
+
+  } else if (type === 'fijos') {
+    title.textContent = 'Fijos pendientes — ' + monthStr();
+    const now = new Date();
+    const typeMap = { auto:'💳 Débito auto', manual:'🏦 Manual', pending:'⏳ Pendiente' };
+
+    // Calculate pending amount for each fijo
+    let totalPendiente = 0;
+    const fijoRows = DB.fijos.map(f => {
+      let pendingAmt = 0;
+      let pendingInfo = '';
+
+      if (f.freq === 'weekly' && f.weeklyAmount && f.weeklyDay != null) {
+        const remaining = countRemainingDays(f.weeklyDay);
+        const passed = countPassedDays(f.weeklyDay);
+        pendingAmt = f.weeklyAmount * remaining;
+        totalPendiente += pendingAmt;
+        const dayName = DAY_NAMES_FULL[f.weeklyDay];
+        pendingInfo = `<div style="font-size:12px;color:var(--text3);margin-top:4px;">
+          ${passed} ${dayName}${passed!==1?'s':''} ya pagados · <span style="color:var(--amber);">${remaining} pendientes</span>
+        </div>`;
+      } else {
+        // Monthly: if day of month hasn't passed yet, it's pending
+        const dueDay = f.dueDay || 1;
+        if (dueDay >= now.getDate()) {
+          pendingAmt = f.amount || 0;
+        }
+        totalPendiente += pendingAmt;
+        pendingInfo = pendingAmt > 0
+          ? `<div style="font-size:12px;color:var(--amber);margin-top:4px;">Pendiente este mes</div>`
+          : `<div style="font-size:12px;color:var(--text3);margin-top:4px;">Ya realizado</div>`;
+      }
+
+      const pct = 0; // no bar for fijos
+      return { f, pendingAmt, pendingInfo };
+    }).sort((a,b) => b.pendingAmt - a.pendingAmt);
+
+    body.innerHTML = `
+      <div style="background:var(--amber-dim);border-radius:12px;padding:14px 16px;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;">
+        <div>
+          <div style="font-size:13px;color:var(--amber);">Por pagar este mes</div>
+          <div style="font-size:11px;color:var(--text3);margin-top:2px;">Pagos que aún no se realizaron</div>
+        </div>
+        <span style="font-size:24px;font-weight:600;font-family:'DM Mono',monospace;color:var(--amber);">${fmt(totalPendiente)}</span>
+      </div>
+      <div style="padding:8px 0 14px;">
+        ${fijoRows.length ? fijoRows.map(({f, pendingAmt, pendingInfo}) => {
+          const weeklyTag = f.freq === 'weekly' ? `<span style="font-size:10px;background:var(--accent-dim);color:var(--accent2);padding:2px 6px;border-radius:99px;margin-left:6px;">🔁 Semanal</span>` : '';
+          return `<div style="padding:12px 0;border-bottom:0.5px solid var(--border);">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+              <div style="flex:1;min-width:0;">
+                <div style="font-size:14px;font-weight:500;">${f.name}${weeklyTag}</div>
+                <div style="font-size:12px;color:var(--text3);margin-top:2px;">${typeMap[f.payType]||'Manual'} · ${f.cat||'Otro'}</div>
+                ${pendingInfo}
+              </div>
+              <div style="text-align:right;flex-shrink:0;margin-left:12px;">
+                <div style="font-size:15px;font-weight:600;font-family:'DM Mono',monospace;color:${pendingAmt>0?'var(--amber)':'var(--text3)'};">${pendingAmt>0?fmt(pendingAmt):'—'}</div>
+              </div>
+            </div>
+          </div>`;
+        }).join('') : '<div style="text-align:center;padding:20px;color:var(--text3);font-size:14px;">Sin gastos fijos cargados</div>'}
+      </div>
+    `;
+  }
+
+  openModal('modal-stat-panel');
+}
+
 function renderHome() {
   const mk = getMonthKey();
   const mExps = DB.expenses.filter(e => e.month === mk);
