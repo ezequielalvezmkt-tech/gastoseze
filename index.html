@@ -629,7 +629,7 @@ select { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.o
       </div>
       <div class="stat-box" onclick="openStatPanel('fijos')" style="cursor:pointer;">
         <div class="sv sv-amber" id="stat-fijos">$0</div>
-        <div class="sl">Fijos mes</div>
+        <div class="sl">Fijos pend.</div>
       </div>
     </div>
 
@@ -1441,7 +1441,7 @@ function renderHome() {
   const mExps = DB.expenses.filter(e => e.month === mk);
   const mInc = DB.incomes.filter(i => i.month === mk);
   const totalGastos = mExps.reduce((s,e) => s + (e.amount||0), 0);
-  const totalFijos = DB.fijos.reduce((s,f) => s + getFijoMonthlyAmount(f), 0);
+  const totalFijos = DB.fijos.reduce((s,f) => s + getFijoPendingAmount(f), 0);
   const totalIngresos = mInc.reduce((s,i) => s + (i.amount||0), 0);
   const balance = totalIngresos - totalGastos - totalFijos;
 
@@ -1499,6 +1499,7 @@ function renderHome() {
   if (slG) slG.textContent = 'Gast. ' + (shortLabel[tab]||'');
 
   const pct = totalIngresos > 0 ? Math.min(Math.round((totalGastos + totalFijos) / totalIngresos * 100), 100) : 0;
+  // Note: totalFijos here is already pending-only
   document.getElementById('progress-vals').textContent = pct + '%';
   const pb = document.getElementById('progress-bar');
   pb.style.width = pct + '%';
@@ -1813,6 +1814,15 @@ function getFijoMonthlyAmount(f) {
     const now = new Date();
     return f.weeklyAmount * countDayInMonth(f.weeklyDay, now.getFullYear(), now.getMonth());
   }
+  return f.amount || 0;
+}
+
+function getFijoPendingAmount(f) {
+  // Returns only what's left to pay this month
+  if (f.freq === 'weekly' && f.weeklyAmount && f.weeklyDay != null) {
+    return f.weeklyAmount * countRemainingDays(f.weeklyDay);
+  }
+  // For monthly: full amount (no due day tracking yet)
   return f.amount || 0;
 }
 
