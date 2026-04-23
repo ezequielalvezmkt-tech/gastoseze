@@ -890,6 +890,10 @@ select { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.o
         <label class="form-label">Categoría</label>
         <div class="cat-scroll" id="exp-cat-scroll"></div>
       </div>
+      <div class="form-field">
+        <label class="form-label">Fecha</label>
+        <input type="date" id="exp-date" style="background:var(--bg4);border:1px solid var(--border2);border-radius:12px;color:var(--text);padding:13px 16px;font-size:15px;width:100%;">
+      </div>
       <div style="height:4px"></div>
       <button class="btn btn-primary" onclick="addExpense()">Guardar gasto</button>
       <div style="height:12px"></div>
@@ -1003,6 +1007,10 @@ select { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.o
           <option value="extra">Ingreso extra</option>
           <option value="otro">Otro</option>
         </select>
+      </div>
+      <div class="form-field">
+        <label class="form-label">Fecha</label>
+        <input type="date" id="income-date" style="background:var(--bg4);border:1px solid var(--border2);border-radius:12px;color:var(--text);padding:13px 16px;font-size:15px;width:100%;">
       </div>
       <div style="height:4px"></div>
       <button class="btn btn-primary" onclick="addIncome()">Guardar ingreso</button>
@@ -2074,6 +2082,9 @@ function cancelVoice() {
 
 function openManualExpense() {
   buildCatPills('exp-cat-scroll', ['Diario','Comida','Transporte','Entretenimiento','Salud','Ropa','Hogar','Servicios','Personal','Otros'], 'Diario');
+  // Set today's date as default
+  const today = new Date().toISOString().split('T')[0];
+  document.getElementById('exp-date').value = today;
   openModal('modal-add-expense');
 }
 
@@ -2148,13 +2159,25 @@ function addExpense() {
   const desc = document.getElementById('exp-desc').value.trim();
   if (!amount || amount <= 0) { toast('Ingresá un monto'); return; }
 
+  // Use selected date or today
+  const dateInput = document.getElementById('exp-date').value;
+  let expDate, expMonth;
+  if (dateInput) {
+    const parts = dateInput.split('-');
+    expDate = parts[2] + '/' + parts[1] + '/' + parts[0];
+    expMonth = parts[0] + '-' + parts[1];
+  } else {
+    expDate = new Date().toLocaleDateString('es-AR');
+    expMonth = getMonthKey();
+  }
+
   const exp = {
     id: Date.now(),
     amount,
     desc: desc || selectedCat,
     cat: selectedCat,
-    date: new Date().toLocaleDateString('es-AR'),
-    month: getMonthKey()
+    date: expDate,
+    month: expMonth
   };
   DB.expenses.push(exp);
   save();
@@ -2164,6 +2187,7 @@ function addExpense() {
   toast('✓ Gasto guardado — ' + fmt(amount));
   document.getElementById('exp-amount').value = '';
   document.getElementById('exp-desc').value = '';
+  document.getElementById('exp-date').value = '';
 }
 
 let selectedFreq = 'monthly';
@@ -2272,13 +2296,24 @@ function addIncome() {
   const type = document.getElementById('income-type').value;
   if (!amount || amount <= 0) { toast('Ingresá un monto'); return; }
 
+  const dateInput = document.getElementById('income-date').value;
+  let incDate, incMonth;
+  if (dateInput) {
+    const parts = dateInput.split('-');
+    incDate = parts[2] + '/' + parts[1] + '/' + parts[0];
+    incMonth = parts[0] + '-' + parts[1];
+  } else {
+    incDate = new Date().toLocaleDateString('es-AR');
+    incMonth = getMonthKey();
+  }
+
   const inc = {
     id: Date.now(),
     amount,
     desc: desc || type,
     type,
-    date: new Date().toLocaleDateString('es-AR'),
-    month: getMonthKey()
+    date: incDate,
+    month: incMonth
   };
   DB.incomes.push(inc);
   save();
@@ -2289,6 +2324,13 @@ function addIncome() {
   toast('✓ Ingreso registrado — ' + fmt(amount));
   document.getElementById('income-amount').value = '';
   document.getElementById('income-desc').value = '';
+  document.getElementById('income-date').value = '';
+}
+
+function openIncomeModal() {
+  const today = new Date().toISOString().split('T')[0];
+  document.getElementById('income-date').value = today;
+  openModal('modal-add-income');
 }
 
 // ════════ GOOGLE SHEETS SYNC ════════
